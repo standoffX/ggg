@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Аналітика екології GY-MCU680</title>
+    <!-- ВІДКОРЕГОВАНО: Підключаємо правильний CDN для Chart.js -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; display: block; margin: 10px auto; }
+        .btn:hover { background: #0056b3; }
+        /* ПОКРАЩЕНО: Картки тепер адаптивні та не злипнуться на мобільних */
+        .widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin: 20px 0; }
+        .card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #ddd; }
+        .card h3 { margin: 0 0 10px 0; font-size: 14px; color: #666; }
+        .card p { margin: 0; font-size: 24px; font-weight: bold; color: #222; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2 style="text-align: center;">Моніторинг якості повітря в реальному часі</h2>
+    <button class="btn" id="connectBtn">Підключити Arduino</button>
+
+    <div class="widgets">
+        <div class="card"><h3>Температура</h3><p id="tVal">-- °C</p></div>
+        <div class="card"><h3>Вологість</h3><p id="hVal">-- %</p></div>
+        <div class="card"><h3>Тиск</h3><p id="pVal">-- гПа</p></div>
+        <div class="card"><h3>Якість повітря (IAQ)</h3><p id="iVal">--</p></div>
+    </div>
+
+    <canvas id="liveChart" width="400" height="180"></canvas>
+</div>
+
+<script>
+    let port, reader;
+    const connectBtn = document.getElementById('connectBtn');
+
+    const ctx = document.getElementById('liveChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [], 
+            datasets: [
+                { label: 'Якість повітря (IAQ)', data: [], borderColor: '#ff5722', yAxisID: 'yIAQ', tension: 0.3 },
+                { label: 'Температура (°C)', data: [], borderColor: '#007bff', yAxisID: 'yTemp', tension: 0.3 }
+            ]
+        },
+        options: {
+            scales: {
+                yIAQ: { type: 'linear', position: 'left', title: { display: true, text: 'IAQ Index' } },
+                yTemp: { type: 'linear', position: 'right', title: { display: true, text: 'Температура °C' }, grid: { drawOnChartArea: false } }
+            }
+        }
+    });
+
+    connectBtn.addEventListener('click', async () => {
+        // Перевірка підтримки Web Serial API браузером
+        if (!("serial" in navigator)) {
+            alert("Ваш браузер не підтримує Web Serial API. Спробуйте Google Chrome або Microsoft Edge.");
+            return;
+        }
+
+        try {
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 115200 });
+            connectBtn.innerText = "Підключено 🟢";
+            connectBtn.disabled = true;
+
+            const textDecoder = new TextDecoderStream();
+            port.readable.pipeTo(textDecoder.writable);
+            const inputStream = textDecoder.readable;
+            reader = inputStream.getReader();
+
+            let bufferStr = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    reader.releaseLock();
+                    break;
+                }
+                if (value) {
+                    bufferStr += value;
+                    let lines = bufferStr.split("\n");
+                    bufferStr = lines.pop(); // Останній (неповний) елемент повертаємо в буфер
+
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (!line) continue; // Ігноруємо пусті рядки
+
+                        try {
+                            // ВІДКОРЕГОВАНО: Прибрано жорстку перевірку startsWith/endsWith.
+                            // JSON.parse сам чудово впорається, якщо рядок цілісний.
+                            const data = JSON.parse(line);
+
+                            // Оновлення DOM
+                            if(data.temp !== undefined) document.getElementById('tVal').innerText = data.temp + " °C";
+                            if(data.hum !== undefined)  document.getElementById('hVal').innerText = data.hum + " %";
+                            if(data.press !== undefined) document.getElementById('pVal').innerText = data.press + " гПа";
+                            if(data.iaq !== undefined)   document.getElementById('iVal').innerText = data.iaq;
+
+                            // Додавання на графік
+                            const now = new Date().toLocaleTimeString();
+                            chart.data.labels.push(now);
+                            chart.data.datasets[0].data.push(data.iaq);
+                            chart.data.datasets[1].data.push(data.temp);
+
+                            if (chart.data.labels.length > 20) {
+                                chart.data.labels.shift();
+                                chart.data.datasets[0].data.shift();
+                                chart.data.datasets[1].data.shift();
+                            }
+                            chart.update();
+                        } catch (e) {
+                            // Сюди потраплятимуть лише дійсно биті або "склеєні" шматки JSON
+                            console.log("Очікування повного кадру даних...", line);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            alert("Помилка підключення: " + error);
+        }
+    });
+</script>
+</body>
+</html>
