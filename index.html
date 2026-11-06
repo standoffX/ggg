@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GY-MCU680 Еко-Аналітика</title>
+    <title>Еко-Аналітика</title>
     <style>
         :root {
             --bg-color: #0b0f19;
@@ -128,7 +128,7 @@
 
 <div class="container">
     <header>
-        <h2>Моніторинг Повітря GY-MCU680</h2>
+        <h2>Моніторинг Повітря</h2>
         <button class="btn" id="connectBtn">Підключити Arduino</button>
     </header>
 
@@ -216,7 +216,7 @@
             port = await navigator.serial.requestPort();
             await port.open({ baudRate: 115200 });
             
-            connectBtn.innerText = "З'ЄДНАНО 🟢";
+            connectBtn.innerText = "З'ЄДНАНО ";
             connectBtn.style.boxShadow = "0 0 15px rgba(16, 185, 129, 0.4)";
             connectBtn.style.background = "var(--accent-green)";
             connectBtn.disabled = true;
